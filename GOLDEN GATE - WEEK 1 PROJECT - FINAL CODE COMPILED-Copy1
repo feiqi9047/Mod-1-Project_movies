@@ -1,0 +1,287 @@
+# import all necessary libaries
+
+import requests
+from bs4 import BeautifulSoup
+import bs4
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import time
+import json
+
+
+  #-----------------------------------------------WEBSCRAPING FROM IMDB--------------------------------------------------#
+
+# to scrape the first page of one year
+def imdb_movies(start, end, index):
+    url = 'https://www.imdb.com/search/title?title_type=feature&year=' + start + ',' + end + '&start=' + index + '&ref_=adv_nxt'
+    # making the parameters beginning-year date and end-of-year date, where index = page number
+    r = requests.get(url)
+    # request dynamic url above
+    if r.status_code == 200:
+        c = r.content
+        soup = BeautifulSoup(c, 'html.parser')
+        movie_stats = soup.find_all(class_='lister-item-content')
+        # pull all html under the class 'lister-item-content' into movie_stats   
+        movies = []
+        for i in movie_stats:
+            title = i.find('a', href=True).text
+            # find the title of movies under 'a' tage where there is a href preceding the texts
+            year = i.find(class_='lister-item-year text-muted unbold').text.replace('(I) ','').replace('(', '').replace(")",'')
+            # the year is under this class, but had to replace certain parts of the text to get the year only
+            run_time = []
+            runtimes = i.find('span', class_='runtime')
+            run_time.append(runtimes)
+            # need to make a new list with just runtimes under the 'span' tag with class 'runtime'
+            for j in run_time:
+                runtime = []
+                # run a for-loop to extract the runtime element within the list of all runtimes
+                if type(j) is bs4.element.Tag:
+                    # some movies do not have runtimes, and the list would return "None", which is a NoneType item
+                    runtime.append(j.text.replace(' min',''))
+                    # for items that are bs4.element.Tag type, we add the text to the runtime list
+                else:
+                    runtime.append('NA')
+                    # for all other types, such as NoneType, we add "NA" to the list
+            genre = i.find('p', class_='text-muted').text.replace('\n','').replace('  ','').split('|')[-1]
+            # find genre under the above tag and class, but not that the genre is the last element within that list
+            imdb_rating = i.find('div', class_='inline-block ratings-imdb-rating').text.replace('\n','')
+            # find rating under above tag and class
+            votes = i.find(class_='sort-num_votes-visible').text.split()[1]
+            # votes and gross are in the same class, where votes is the first and second element
+            ratings_category = []
+            categories = i.find('span', class_='certificate')
+            ratings_category.append(categories)
+            # for-loop through all categories b/c same issue as runtime regarding NoneType issues
+            for j in ratings_category:
+                category = []
+                if type(j) is bs4.element.Tag:
+                    category.append(j.string)
+                else:
+                    category.append('Not Rated')
+                movies.append({'title': title, 'year': year, 'category': category, 'runtime': runtime, 'genre': genre, 'imdb_rating': float(imdb_rating), 'votes': int(votes.replace(',',''))})
+                # make a dictionary with the above keys and plug in the values found above, converting some to numbers
+    return movies
+
+# to scrape all pages of one year
+def scrape_many_pages(year):
+    start = year +'-01-01'
+    end = year +'-12-31'
+    # per url format, make the beginning and end of year into date format
+    pages_per_year = 4
+    # we want 200 results per year, so 4 pages of 50 results
+    index = 1
+    # index is the page number
+    step = 50
+    # each page begins at 51, 101, 151, 201, etc, so index need to increment by 50
+    movies = []
+    for i in range(pages_per_year):
+        movies.extend(imdb_movies(start, end, str(index)))
+        index += step
+        # adding/extending to movies list the dictionary from function imdb_movies(start, end, index) for all pages for one year 
+    return movies
+
+# to scrape all years
+def scrape_many_years():
+    start = 2008
+    end = 2018
+    # decide which year to start and which year to stop
+    pages = 11
+    # 10 years would yield 11 pages of data
+    second_delay = 1
+    movies = []
+    for i in range(pages):
+        if start <= end:
+            movies.extend(scrape_many_pages(str(start)))
+            start += 1
+            # adding/extending to movies list the dictionary from function scrape_many_pages(start) for all pages for all years 
+        time.sleep(second_delay)
+    return movies
+
+imdb_all_data = scrape_many_years()
+# load all data into the variable imdb_all_data so can be called locally faster
+
+for i in imdb_all_data:
+    i['category'] = ''.join(i['category'])
+    i['runtime'] = ''.join(i['runtime'])
+imdb_all_data
+# because items in these two keys shows up with [] around them, we tweak them in the dictionary to get rid of the [] brackets
+
+df = pd.DataFrame(imdb_all_data)
+# put all into a dataframe after we fixed things up in the dictionary
+
+df.drop(df[df['runtime'] == 'NA'].index, inplace=True)
+# drop the column in df where runtime as an NA
+
+import sqlite3
+conn = sqlite3.connect('imdb_data.db')
+cur = conn.cursor()
+# create new database as imdb_data.db and create new table in that database with columns dictated below
+cur.execute('''CREATE TABLE imdb (
+                title TEXT, 
+                year INTEGER, 
+                genre TEXT, 
+                runtime BLOB, 
+                category TEXT, 
+                votes INTEGER,
+                imdb_rating INTEGER)
+                ''')
+
+def dynamic_data_entry():
+    for i in imdb_all_data:
+        title = i['title'] 
+        year = i['year']
+        genre = i['genre']
+        runtime = i['runtime'] 
+        category = i['category']
+        votes = i['votes']
+        imdb_rating = i['imdb_rating']
+        # for each dictionary key, we make their values as inputs into our db 
+        cur.execute("INSERT INTO imdb (title, year, genre, runtime, category, votes, imdb_rating) VALUES (?,?,?,?,?,?,?)",
+            (title, year, genre, runtime, category, votes, imdb_rating))
+        conn.commit()
+        # commit our new table 
+
+df = pd.read_sql_query('''SELECT * FROM imdb;''', conn)
+# select everything from db to see check if all data are captured
+
+
+ #-----------------------------------------------API CALLS FROM THEMOVIEDB--------------------------------------------------#
+
+
+api_key = '214916c35438e9407b1daafea57d7264'
+
+url_params = { }
+
+# to call the many pages for one year
+def tmdb_per_year(url_params, api_key, year):        
+    page = 1
+    pages = 3
+    # we want the top 60 results, 3 pages with 20 results per page
+    highest_revenue_films = []
+    for i in range(pages):
+        if i < pages:
+            url = 'https://api.themoviedb.org/3/discover/movie?api_key=' +api_key+ '&primary_release_year=' +year+ '&sort_by=revenue.desc&page=' +str(page)
+            response = requests.get(url)
+            highest_revenue = response.json()
+            # using dynamic url above, find all dictionaries
+            highest_revenue_film = highest_revenue['results']
+            # data is in nested dictionary under the key 'results'
+            highest_revenue_films.extend(highest_revenue_film)
+            page += 1
+    return highest_revenue_films
+
+# to call many years 
+def tmdb_many_years():
+    start = 2008
+    end = 2018
+    num = 11
+    # starting in 2008, ending 2018, so 11 years
+    movies = []
+    try:
+        for i in range(num):
+            if start <= end:
+                movies.extend(tmdb_per_year(url_params, api_key, str(start)))
+                start += 1
+                # for 11 times, call on the function tmdb_per_year to pull all pages for each year, for 11 years
+    except:
+        print("not loading")
+    return movies
+
+# assign the 660 film data to a local variable
+all_films = tmdb_many_years()
+
+# to pull each movie's detail from the list of 660 movies 
+def tmdb_film_list(url_params, api_key):
+    movies = []
+    for i in all_films:       
+        film = requests.get('https://api.themoviedb.org/3/movie/'+ str(i['id']) +'?api_key='+ api_key+'&language=en-US&append_to_response=credits')
+        film = film.json()
+        movies.append(film)  
+        time.sleep(.5)
+    return movies
+
+# assign the ALL film detailed data to a local variable
+film_list = tmdb_film_list(url_params, api_key)
+
+# from the dictionary film_list, extract the elements of the dictionary we want
+def tmdb_movie_data():
+    movie_data = []
+    for j in film_list:
+        # put in try/except to append "NA" if these keys do not exist
+        try:
+            budget = j['budget']
+            revenue = j['revenue']
+            title = j['original_title']
+            release_date = j['release_date']
+            # directions list is in a nested dict, only extract the main director
+            director_list = []
+            for k in j['credits']['crew']:
+                if k['department'] == 'Directing':
+                    director_list.append(k['name'])
+                    directors = director_list[0]
+            movie_data.append({'title': title, 'budget': budget, 'revenue': revenue, 'release_date': release_date, 'directors': directors })
+        except:
+            movie_data.append({'title': 'NA', 'budget': 'NA', 'revenue': 'NA', 'release_date': 'NA', 'directors': 'NA' })     
+    return movie_data
+
+all_movie_data = tmdb_movie_data()
+
+df = pd.DataFrame(all_movie_data)
+
+# cleaning up the df by removing rows with "NA" and removing row if budget = 0
+df.drop(df[df['budget'] == 'NA'].index, inplace=True)
+df.drop(df[df['directors'] == 'NA'].index, inplace=True)
+df.drop(df[df['release_date'] == 'NA'].index, inplace=True)
+df.drop(df[df['revenue'] == 'NA'].index, inplace=True)
+df.drop(df[df['title'] == 'NA'].index, inplace=True)
+df.drop(df[df['budget'] == 0].index, inplace=True)
+df['profit'] = df['revenue'] - df['budget']
+
+# print the cleaned dataframe to a dictionary, using "records" type so return a list of cleaned dictionaries
+omdb_all_data = df.to_dict('records')
+
+# write the dictionary to sqlite
+import sqlite3
+conn = sqlite3.connect('omdb_data.db')
+cur = conn.cursor()
+cur.execute('''CREATE TABLE omdb_info (
+                title TEXT, 
+                budget INTEGER, 
+                revenue TEXT, 
+                directors TEXT, 
+                release_date INTEGER)
+                ''')
+
+def dynamic_data_entry():
+    for i in omdb_all_data:
+        title = i['title'] 
+        budget = i['budget']
+        revenue = i['revenue']
+        directors = i['directors'] 
+        release_date = i['release_date']
+        cur.execute("INSERT INTO omdb_info (title, budget, revenue, directors, release_date) VALUES (?,?,?,?,?)",
+            (title, budget, revenue, directors, release_date))
+        conn.commit()
+
+dynamic_data_entry()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
