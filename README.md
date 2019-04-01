@@ -22,13 +22,16 @@ The API search provided the following data points, which yielded 550 data points
 - Revenue
 
 ## SQL Database Schema
-SQLite3 was used to construct the schema for the SQL database. Our database was joined on Title. We also added addition columns which helped further our analysis, including Profit (Revenue minus Budget) and Profit Margin (Profit divided by Revenue). Genres was broken down into additional columns to indicate the primary genre and subcategories of genres.
+SQLite3 was used to construct the schema for the SQL database. Our database was joined on Title. We also added addition columns which helped further our analysis, including Profit (Revenue minus Budget) and Profit Margin (Profit divided by Revenue). Genres was broken down into additional columns to indicate the primary genre and subcategories of genres. Below is a snapshot of our dataset with the columns that we focused on boxed in.
+
+<img width="738" alt="Screen Shot 2019-04-01 at 10 27 53 AM" src="https://user-images.githubusercontent.com/44821660/55335303-e1045400-5468-11e9-9057-9be0b0e3e230.png">
+
 
 ### Relationship Overview
 
 <img width="477" alt="Movies_Relationship" src="https://user-images.githubusercontent.com/44821660/55293057-c924c580-53bf-11e9-80bd-e444991699c8.png">
 
-As expected, we see 100% correlations between Profit, Revenue, and Budget. This makes sense as Profit is a calculation based on Profit and Revenue. Profit Margin has a higher correlations with Revenue and Budget, with a positive correlation with Revenue and a negative correlation with Budget. Ratings do not seem to have significant correlations with Budget, but does have a slight positive correlation with Revenue.
+Profit Margin has a higher correlations with Revenue and Budget, with a positive correlation with Revenue and a negative correlation with Budget. Ratings do not seem to have significant correlations with Budget, but does have a slight positive correlation with Revenue.
 
 ### Deeper Inspection of Relationships
 
